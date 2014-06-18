@@ -1,0 +1,9 @@
+{application,bertrpc_server,
+             [{description,[]},
+              {vsn,"1"},
+              {registered,[]},
+              {applications,[kernel,stdlib]},
+              {mod,{bertrpc_server_app,[]}},
+              {env,[]},
+              {modules,[bert,bertrpc_server,bertrpc_server_app,
+                        bertrpc_server_sup]}]}.

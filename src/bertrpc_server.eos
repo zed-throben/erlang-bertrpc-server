@@ -1,0 +1,109 @@
+-define(TCP_OPTIONS, [binary, {packet, raw}, {active, false}, {reuseaddr, true}])
+-record(state,{exported_modules})
+
+// export all modules
+start(Port) ->
+    listen(Port,[])
+
+// export only specified modules
+start(Port,Export) ->
+    listen(Port,#[exported_modules=Export])
+
+listen(Port,Option) ->
+    {ok, LSocket} = gen_tcp.listen(Port, ?TCP_OPTIONS)
+    accept(LSocket,Option)
+
+accept(LSocket,Option) ->
+    {ok, Socket} = gen_tcp.accept(LSocket)
+    //io.format("accept ~p\n",[Socket])
+    
+    State = #state{
+        //exported_modules = Option.exported_modules
+        exported_modules = proplists.get_value(exported_modules,Option)
+    }
+
+    spawn(fun() -> loop(Socket,State ) )
+    accept(LSocket,Option)
+
+
+loop(Socket,State) ->
+    read_len(Socket,State)
+
+read_len(Socket,State)->
+    case gen_tcp.recv(Socket, 4) of
+        {ok, Data} ->
+            <<Len:32>> = Data
+            //io.format("len = ~w\n",[Len])
+            read_term(Socket,Len,State)
+
+        {error, closed} = Err ->
+            Err
+
+exec_term(Socket,State,Term)->
+    case Term of
+        {call,Module,Function,Param} ->
+            case do_apply(Module,Function,Param,State) of
+                {ok,Res,NewState} ->
+                    send_term(Socket,{reply,Res})
+                    loop(Socket,NewState)
+
+                {error,Reason,NewState} ->
+                    send_term(Socket,Reason)
+                    loop(Socket,NewState)
+
+        UnknownMsg ->
+            io.format("unknown message ~p\n",[UnknownMsg])
+            send_error(Socket,unknown)
+            loop(Socket,State)
+
+send_error(Socket,Reason)->
+    Code = 0
+    Class = Reason
+    Detail = Class
+    Backtrace = <<"">>
+    send_term(Socket,{error, {server, Code, Class, Detail, Backtrace}} )
+
+read_term(Socket,Len,State)->
+    case gen_tcp.recv(Socket, Len) of
+        {ok, Data} ->
+            Term = decode(Data)
+            //io.format("term = ~p\n",[Term])
+            exec_term(Socket,State,Term)
+
+        {error, closed} = Err ->
+            Err
+
+send_term(Socket,Term)->
+    //io.format("send_term ~p\n",[Term])
+    BinTerm = encode(Term)
+    Len = byte_size(BinTerm)
+    BinLen = <<A0:8,A1:8,A2:8,A3:8>> = <<Len:32>>
+    //<<BinLen:32>> = <<Len:32>>    // why won't work?
+    //io.format("binlen = ~p\n",[BinLen])
+    gen_tcp.send(Socket, BinLen)
+    //io.format("term   = ~p\n",[BinTerm])
+    gen_tcp.send(Socket, BinTerm)
+
+
+do_apply(Module,Function,Param,State)->
+    TargetModule =
+        case State#state.exported_modules of
+            undefined -> Module
+
+            Modules ->
+                case lists.member(Module,Modules) of
+                    true -> Module
+                    _    -> undefined
+
+    case TargetModule of
+        undefined ->
+            {error,not_exported_module,State}
+        _ ->
+            Res = apply(Module,Function,Param)
+            {ok,Res,State}
+
+decode(X)->
+    bert.decode(X)
+
+encode(X)->
+    bert.encode(X)
