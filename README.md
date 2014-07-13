@@ -3,7 +3,8 @@ erlang-bertrpc-server
 
 # Erlang BERT-RPC server
 
-implementation of BERT-RPC server in Erlang
+really simple implementation of BERT-RPC server in Erlang supports only function call.
+
 
 [bert-rpc](http://bert-rpc.org/)
 
@@ -26,4 +27,5 @@ bertrpc_server:start( Port , ExportModuleList )
 
 #author,homepage
 - http://throben.org/
+- http://zed-throben.hateblo.jp/entry/2014/07/13/TopPage
 - twitter: @zed_throben https://twitter.com/zed_throben
